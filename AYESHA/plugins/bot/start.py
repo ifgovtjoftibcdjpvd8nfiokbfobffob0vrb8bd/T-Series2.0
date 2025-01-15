@@ -1,13 +1,16 @@
 import time
-import asyncio  # asyncio ko import karna na bhulein
+import random
+import asyncio
 from pyrogram import filters
 from pyrogram.errors import ChannelInvalid
 from pyrogram.enums import ChatType, ChatMembersFilter
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from youtubesearchpython.__future__ import VideosSearch
+
 import config
 from AYESHA import app
 from AYESHA.misc import _boot_
+from AYESHA.plugins.play.playlist import del_plist_msg
 from AYESHA.plugins.sudo.sudoers import sudoers_list
 from AYESHA.utils.database import (
     add_served_chat,
@@ -24,71 +27,59 @@ from AYESHA.utils.inline import help_pannel, private_panel, start_panel
 from config import BANNED_USERS
 from strings import get_string
 
+
+async def delete_message_after_delay(message, delay):
+    await asyncio.sleep(delay)
+    await message.delete()
+
+
 @app.on_message(filters.command(["start"]) & filters.private & ~BANNED_USERS)
 @LanguageStart
 async def start_pm(client, message: Message, _):
     await add_served_user(message.from_user.id)
-    
-    # Typing effect part
-    typing_message = await message.reply("<b>нι ỉм αყєѕнα ♥♥......</b>")  # Initial message
-    
-    # Simulate typing
-    typing_text = "<b>𝖲ᴛᴀʀᴛɪɴɢ...❤️‍🔥</b>"
-    
-    for i in range(1, len(typing_text) + 1):  # Loop through each character
-        try:
-            await typing_message.edit_text(typing_text[:i])
-            await asyncio.sleep(0.001)  # Add delay to simulate typing
-        except Exception as e:
-            print(f"Error while editing message: {e}")  # Print error if occurs
-
-    await asyncio.sleep(2)  # Keep message for a while
-    await typing_message.delete()  # Delete the message
-
-    # Continue with the existing logic after typing effect
     if len(message.text.split()) > 1:
         name = message.text.split(None, 1)[1]
 
         if name[0:3] == "del":
             await del_plist_msg(client=client, message=message, _=_)
 
-        if name[0:4] == "help":
+        elif name[0:4] == "help":
             keyboard = help_pannel(_)
-            return await message.reply_photo(
-                photo=config.START_IMG_URL,
+            return await message.reply_photo(photo=config.START_IMG_URL,
                 caption=_["help_1"].format(config.SUPPORT_CHAT),
                 reply_markup=keyboard,
             )
-        if name[:8] == "connect_":
+
+        elif name[:8] == "connect_":
             chat_id = name[8:]
             try:
                 title = (await app.get_chat(chat_id)).title
             except ChannelInvalid:
-                return await message.reply_text(f"ʟᴏᴏʟ ʟɪᴋᴇ ɪ ᴀᴍ ɴᴏᴛ ᴀɴ ᴀᴅᴍɪɴ ᴏғ ᴛʜᴇ ᴄʜᴀᴛ ɪᴅ {chat_id}")
+                return await message.reply_text(f"Looks like I am not an admin of the chat ID {chat_id}")
             
             admin_ids = [member.user.id async for member in app.get_chat_members(chat_id, filter=ChatMembersFilter.ADMINISTRATORS)]
             if message.from_user.id not in admin_ids:
-                return await message.reply_text(f"sᴏʀʀʏ sɪʀ ʙᴜᴛ ɪ ᴛʜɪɴᴋ ᴛʜᴀᴛ ʏᴏᴜ ɴᴏᴛ ᴀɴ ᴀᴅᴍɪɴ ᴏғ {title}")
+                return await message.reply_text(f"Sorry, but it seems you are not an admin of {title}.")
             a = await connect_to_chat(message.from_user.id, chat_id)
             if a:
-                await message.reply_text(f"ʏᴏᴜ ᴀʀᴇ ɴᴏᴡ ᴄᴏɴɴᴇᴄᴛᴇᴅ ᴛᴏ {title}")
+                await message.reply_text(f"You are now connected to {title}.")
             else:
                 await message.reply_text(a)
-        
-        if name[0:3] == "sud":
+
+        elif name[0:3] == "sud":
             await sudoers_list(client=client, message=message, _=_)
             if await is_on_off(2):
                 return await app.send_message(
                     chat_id=config.LOGGER_ID,
-                    text=f"{message.from_user.mention} ᴊᴜsᴛ sᴛᴀʀᴛᴇᴅ ᴛʜᴇ ʙᴏᴛ ᴛᴏ ᴄʜᴇᴄᴋ <b>sᴜᴅᴏʟɪsᴛ</b>.\n\n<b>ᴜsᴇʀ ɪᴅ :</b> <code>{message.from_user.id}</code>\n<b>ᴜsᴇʀɴᴀᴍᴇ :</b> @{message.from_user.username}",
+                    text=f"{message.from_user.mention} started the bot to check <b>Sudo List</b>.\n\n<b>User ID:</b> <code>{message.from_user.id}</code>\n<b>Username:</b> @{message.from_user.username}",
                 )
-            return
-        if name[0:3] == "inf":
+
+        elif name[0:3] == "inf":
             m = await message.reply_text("🔎")
             query = (str(name)).replace("info_", "", 1)
             query = f"https://www.youtube.com/watch?v={query}"
-            results = VideosSearch(query, limit=1)
-            for result in (await results.next())["result"]:
+            results = await VideosSearch(query, limit=1).next()
+            for result in results["result"]:
                 title = result["title"]
                 duration = result["duration"]
                 views = result["viewCount"]["short"]
@@ -97,6 +88,7 @@ async def start_pm(client, message: Message, _):
                 channel = result["channel"]["name"]
                 link = result["link"]
                 published = result["publishedTime"]
+
             searched_text = _["start_6"].format(
                 title, duration, views, published, channellink, channel, app.mention
             )
@@ -118,25 +110,33 @@ async def start_pm(client, message: Message, _):
             if await is_on_off(2):
                 return await app.send_message(
                     chat_id=config.LOGGER_ID,
-                    text=f"{message.from_user.mention} ᴊᴜsᴛ sᴛᴀʀᴛᴇᴅ ᴛʜᴇ ʙᴏᴛ ᴛᴏ ᴄʜᴇᴄᴋ <b>ᴛʀᴀᴄᴋ ɪɴғᴏʀᴍᴀᴛɪᴏɴ</b>.\n\n<b>ᴜsᴇʀ ɪᴅ :</b> <code>{message.from_user.id}</code>\n<b>ᴜsᴇʀɴᴀᴍᴇ :</b> @{message.from_user.username}",
+                    text=f"{message.from_user.mention} started the bot to check <b>Track Information</b>.\n\n<b>User ID:</b> <code>{message.from_user.id}</code>\n<b>Username:</b> @{message.from_user.username}",
                 )
     else:
         out = private_panel(_)
-        await message.reply_photo(
-            photo=config.START_IMG_URL,
+        baby = await message.reply_text(f"**▒▒▒▒▒▒▒▒▒▒ 0%**")
+        await baby.edit_text(f"**█▒▒▒▒▒▒▒▒▒ 10%**")
+        await baby.edit_text(f"**██▒▒▒▒▒▒▒▒ 20%**")
+        await baby.edit_text(f"**███▒▒▒▒▒▒▒ 30%**")
+        await baby.edit_text(f"**████▒▒▒▒▒▒ 40%**")
+        await baby.edit_text(f"**█████▒▒▒▒▒ 50%**")
+        await baby.edit_text(f"**██████▒▒▒▒ 60%**")
+        await baby.edit_text(f"**███████▒▒▒ 70%**")
+        await baby.edit_text(f"**████████▒▒ 80%**")
+        await baby.edit_text(f"**█████████▒ 90%**")
+        await baby.edit_text(f"**██████████ 100%**")
+        await baby.edit_text(f"**❖ ɴᴏᴡ sᴛᴀʀᴛᴇᴅ..**")
+        await baby.delete()
+
+        await message.reply_photo(photo=config.START_IMG_URL,
             caption=_["start_2"].format(message.from_user.mention, app.mention),
             reply_markup=InlineKeyboardMarkup(out),
         )
         if await is_on_off(2):
             return await app.send_message(
                 chat_id=config.LOGGER_ID,
-                text=f"{message.from_user.mention} ᴊᴜsᴛ sᴛᴀʀᴛᴇᴅ ᴛʜᴇ ʙᴏᴛ.\n\n<b>ᴜsᴇʀ ɪᴅ :</b> <code>{message.from_user.id}</code>\n<b>ᴜsᴇʀɴᴀᴍᴇ :</b> @{message.from_user.username}",
+                text=f"{message.from_user.mention} started the bot.\n\n<b>User ID:</b> <code>{message.from_user.id}</code>\n<b>Username:</b> @{message.from_user.username}",
             )
-
-# Rest of the code remains the same...
-
-
-
 
 
 @app.on_message(filters.command(["start"]) & filters.group & ~BANNED_USERS)
